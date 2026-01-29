@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(git fetch:*)",
+      "Bash(.specify/scripts/bash/create-phr.sh:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "Bash(.specify/scripts/bash/update-agent-context.sh:*)",
+      "Bash(python:*)",
+      "Bash(venvScriptsactivate:*)",
+      "Bash(pip install:*)",
+      "Bash(./venv/Scripts/pip:*)",
+      "Bash(./venv/Scripts/python:*)",
+      "Bash(venv/Scripts/python.exe -m pytest:*)",
+      "Bash(venv/Scripts/pip.exe uninstall:*)",
+      "Bash(pip show:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir C:UsersTaimoorwellbeing)"
+    ]
+  }
+}
