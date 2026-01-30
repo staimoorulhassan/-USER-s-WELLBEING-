@@ -86,6 +86,22 @@ This project uses **Opik** to track AI reliability. Traces include:
 * **Metadata**: Logs token usage, latency, and provider details.
 * **Tags**: Automatically tags traces with `optimization_triviality_check` for easy filtering.
 
-## 📄 License
+## � Building for Release
 
-MIT License. Free to use and modify.
+To create a standalone executable (`.exe`) that you can share with users:
+
+1. **Run the Build Script**:
+
+    ```bash
+    .\build.bat
+    ```
+
+2. **Locate the App**:
+    * Navigate to the `dist\WellbeingTracker` folder.
+    * Run `WellbeingTracker.exe` to test it.
+3. **Distribute**:
+    * Right-click the `WellbeingTracker` folder inside `dist`.
+    * Select **Send to > Compressed (zipped) folder**.
+    * Upload this Zip file to **GitHub Releases**.
+
+**Note**: This is a Windows Desktop Application. It cannot be deployed to web hosting platforms like Vercel or Netlify.
