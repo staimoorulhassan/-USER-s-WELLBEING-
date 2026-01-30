@@ -1,83 +1,91 @@
-# User's Wellbeing - Desktop Tracking Application
+# Wellbeing Desktop Tracker 🧠✨
 
-A desktop application that monitors your computer activity and provides AI-powered insights into your work patterns and wellbeing.
+A **privacy-first, AI-powered desktop companion** that helps you understand your work habits, track productivity, and maintain wellbeing. Built from scratch with a focus on performance, observability, and flexibility.
 
-## Features
+![Status](https://img.shields.io/badge/Status-Active-green)
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![Observability](https://img.shields.io/badge/Observability-Opik-orange)
 
-- **Onboarding**: Set up your profile with your name, role, and main goal
-- **Live Activity Tracking**: Real-time monitoring of your active windows
-- **Focus Score**: AI-calculated metric to assess your productivity
-- **Daily Summaries**: Intelligent summaries of your work patterns
-- **Task Celebrations**: Get notified when you accomplish tasks
-- **Work State Persistence**: Continue where you left off across sessions
-- **Privacy-First**: All data stored locally, nothing sent to the cloud without your consent
+## 🚀 Key Features
 
-## Prerequisites
+* **🤖 Multi-Provider AI Intelligence**:
+  * Generates deep daily summaries and productivity insights.
+  * **Flexible Backend**: Seamlessly switch between **Pollinations.ai** (Free/OpenAI-compatible), **Google Gemini**, and **Z.ai**.
+  * **Smart Optimizations**: Includes "Triviality Filtering" to bypass AI calls for short sessions (<10m), saving cost and time.
+* **📊 Real-Time Focus Tracking**: Automatically monitors active windows and applications to calculate a live "Focus Score" aligned with your personal goals.
+* **🔍 Enterprise-Grade Observability**: Integrated **Opik** tracing provides granular visibility into AI prompts, latencies, and output quality.
+* **⚡ Performance First**:
+  * **Async UI**: Heavy AI tasks run in background threads, keeping the interface snappy.
+  * **Local Processing**: Logs are pre-processed and aggregated locally to minimize data sent to APIs.
+* **🔒 Privacy-Centric**: All raw activity data stays on your machine (`data/logs.json`). Cloud APIs are only contacted for explicit summary generation.
 
-- Python 3.11 or higher
-- Windows 10/11 (pywin32 specific)
-- Google AI Studio API key ([Get yours here](https://makersuite.google.com/app/apikey))
+## 🛠️ Technology Stack
 
-## Setup
+* **Core**: Python 3.11+
+* **GUI**: CustomTkinter (Modern, Dark-Mode ready)
+* **OS Integration**: `pywin32` for low-level window tracking
+* **AI Integration**: `google-genai`, `openai` SDK (compatible with Pollinations/Z.ai)
+* **Monitoring**: `opik` SDK for distributed tracing
 
-1. Clone the repository
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
-4. Configure your API key:
-   - Copy `.env.example` to `.env`
-   - Add your Gemini API key
-5. Run the application:
-   ```bash
-   python src/main.py
-   ```
+## 📦 Installation
 
-## Usage
+1. **Clone the Repository**
 
-### First Launch
+    ```bash
+    git clone https://github.com/yourusername/wellbeing-tracker.git
+    cd wellbeing-tracker
+    ```
 
-1. Complete the onboarding form with your name, role, and main goal
-2. Click "Start Tracking" to begin monitoring your activity
-3. View your live feed and focus score update in real-time
+2. **Create Virtual Environment**
 
-### Generating Summaries
+    ```bash
+    python -m venv venv
+    .\venv\Scripts\activate
+    ```
 
-1. Track your activity for some time
-2. Click "Stop & Summarize" to generate an AI-powered daily summary
-3. Review insights about your productivity patterns and goal alignment
+3. **Install Dependencies**
 
-## Development
+    ```bash
+    pip install . # Installs the package in editable mode
+    ```
 
-### Running Tests
+4. **Configuration (.env)**
+    Create a `.env` file in the root directory:
 
-```bash
-pytest
-```
+    ```ini
+    # Select Provider: "pollinations", "gemini", or "zai"
+    AI_PROVIDER=pollinations
+    
+    # API Keys (Set the one matching your provider)
+    POLLINATIONS_API_KEY=your_key_here
+    GEMINI_API_KEY=your_key_here
+    
+    # Optional: Observability
+    OPIK_API_KEY=your_opik_key
+    ```
 
-### Code Formatting
+## 🚀 Usage
 
-```bash
-black src/ tests/
-```
+1. **Run the App**:
 
-## Technology Stack
+    ```bash
+    .\run.bat
+    ```
 
-- **Language**: Python 3.11+
-- **UI Framework**: CustomTkinter
-- **Window Tracking**: pywin32 (Windows API)
-- **AI Integration**: Google Gemini API
-- **Storage**: Local JSON files
+2. **Onboarding**: Enter your Name, Role (e.g., "Developer"), and Main Goal.
+3. **Track**: The app runs in the background. Minimize it and work.
+4. **Summarize**: Click **"Stop & Summarize"**.
+    * If activity > 10 mins: You get a detailed AI walkthrough of your day.
+    * If activity < 10 mins: Instant feedback (saving AI quota).
 
-## Privacy
+## 📈 Observability (Opik)
 
-All your data is stored locally on your computer. The only time data is sent to the cloud is when you explicitly request a daily summary.
+This project uses **Opik** to track AI reliability. Traces include:
 
-## License
+* **Child Spans**: Explicitly tracks the `check_activity_significance` step.
+* **Metadata**: Logs token usage, latency, and provider details.
+* **Tags**: Automatically tags traces with `optimization_triviality_check` for easy filtering.
 
-MIT License - see LICENSE file for details.
+## 📄 License
+
+MIT License. Free to use and modify.
