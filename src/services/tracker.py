@@ -71,7 +71,7 @@ class TrackerService:
         self._session_focus_score: Optional[int] = None
 
         # Initialize log file if needed
-        if not LOGS_FILE.exists():
+        if not self.log_handler.log_path.exists():
             self.log_handler.initialize_log_file()
 
     def start_tracking(self) -> None:

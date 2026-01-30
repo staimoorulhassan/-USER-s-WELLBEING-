@@ -24,6 +24,12 @@ class WellbeingError(Exception):
         return self.message
 
 
+class FileHandlerError(WellbeingError):
+    """Raised when file handler operations fail."""
+
+    pass
+
+
 class TrackerError(WellbeingError):
     """Raised when tracking service operations fail."""
 
@@ -44,5 +50,11 @@ class InstanceError(WellbeingError):
 
 class DataCorruptionError(WellbeingError):
     """Raised when data files are corrupted or invalid."""
+
+    pass
+
+
+class EventInterceptorError(WellbeingError):
+    """Raised when event interception operations fail."""
 
     pass

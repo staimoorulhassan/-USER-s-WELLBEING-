@@ -12,18 +12,9 @@ from typing import Any, Optional
 import logging
 
 from config.constants import BACKUP_COUNT
+from utils.exceptions import FileHandlerError, DataCorruptionError
 
 logger = logging.getLogger(__name__)
-
-
-class FileHandlerError(Exception):
-    """Base exception for file handler operations."""
-    pass
-
-
-class DataCorruptionError(FileHandlerError):
-    """Raised when file content is corrupted or invalid."""
-    pass
 
 
 def read_json(file_path: Path) -> Optional[dict[str, Any]]:

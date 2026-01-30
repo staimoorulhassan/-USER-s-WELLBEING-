@@ -5,7 +5,7 @@ Uses regex patterns for flexible matching.
 """
 
 import re
-from typing import List
+from typing import List, Optional
 
 from config.constants import BROWSER_SUFFIXES
 
@@ -44,7 +44,7 @@ class BrowserFilter:
         if not window_title:
             return ""
 
-        filtered_title = window_title
+        filtered_title = window_title.strip()
         for pattern in self._compiled_patterns:
             filtered_title = pattern.sub("", filtered_title)
 

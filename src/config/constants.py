@@ -68,3 +68,8 @@ NOTIFICATION_AUTO_DISMISS_SECONDS = 5
 # =============================================================================
 
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
+ENV_ZAI_API_KEY = "ZAI_API_KEY"
+ENV_POLLINATIONS_API_KEY = "POLLINATIONS_API_KEY"
+ENV_AI_PROVIDER = "AI_PROVIDER"  # "gemini", "zai", or "pollinations"
+
+

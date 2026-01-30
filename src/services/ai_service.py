@@ -1,6 +1,6 @@
 """AI service for focus score and daily summary calculation.
 
-Integrates with Google Gemini API to generate insights from activity logs.
+Supports multiple AI providers: Google Gemini and Z.ai.
 """
 
 import logging
@@ -9,20 +9,44 @@ import os
 from datetime import datetime
 from typing import Optional, List
 
+# Try importing Opik for observability
 try:
+    import opik
     from opik import track
+    from opik.integrations.openai import track_openai
 except ImportError:
-    track = None
-    logging.warning("Opik not installed - tracing unavailable")
+    opik = None
+    track_openai = None
+    logging.warning("opik not installed, observability disabled")
+    def track(func):
+        return func
 
+# Configure Opik if API key is present
+if opik and os.environ.get("OPIK_API_KEY"):
+    logging.info("Opik observability enabled")
+
+
+# Try importing Google Gemini
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 except ImportError:
     genai = None
-    logging.warning("google-generativeai not installed - AI features unavailable")
+    types = None
+    logging.warning("google-genai not installed")
+
+# Try importing OpenAI (for Z.ai compatibility)
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+    logging.warning("openai not installed")
 
 from config.constants import (
     ENV_GEMINI_API_KEY,
+    ENV_ZAI_API_KEY,
+    ENV_POLLINATIONS_API_KEY,
+    ENV_AI_PROVIDER,
     AI_TIMEOUT_MANUAL_SECONDS,
 )
 from models.ai_models import FocusScore, DailySummary
@@ -34,33 +58,86 @@ logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """Service for AI-powered insights using Google Gemini API."""
+    """Service for AI-powered insights using multiple AI providers."""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, provider: Optional[str] = None):
         """Initialize AI service.
 
         Args:
-            api_key: Gemini API key (defaults to environment variable)
+            api_key: API key (defaults to environment variable based on provider)
+            provider: AI provider to use ("gemini", "zai", or "pollinations", defaults to env variable)
         """
-        if genai is None:
-            raise AIServiceError("google-generativeai library is not installed")
-
-        # Load API key
-        self.api_key = api_key or os.environ.get(ENV_GEMINI_API_KEY)
-        if not self.api_key:
-            raise AIServiceError(f"{ENV_GEMINI_API_KEY} environment variable not set")
-
-        # Configure Gemini API
-        try:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel("gemini-pro")
-            logger.info("AI service initialized successfully")
-        except Exception as e:
-            raise AIServiceError(f"Failed to initialize Gemini API: {e}") from e
+        # Determine provider
+        self.provider = provider or os.environ.get(ENV_AI_PROVIDER, "gemini").lower()
+        
+        if self.provider == "zai":
+            self._init_zai(api_key)
+        elif self.provider == "pollinations":
+            self._init_pollinations(api_key)
+        else:
+            self._init_gemini(api_key)
 
         # Cache for latest focus score
         self._latest_focus_score: Optional[FocusScore] = None
         self._last_calculated_hash: Optional[int] = None
+
+    def _init_gemini(self, api_key: Optional[str] = None):
+        """Initialize Google Gemini provider."""
+        if genai is None:
+            raise AIServiceError("google-genai library is not installed")
+
+        self.api_key = api_key or os.environ.get(ENV_GEMINI_API_KEY)
+        if not self.api_key:
+            raise AIServiceError(f"{ENV_GEMINI_API_KEY} environment variable not set")
+
+        try:
+            self.client = genai.Client(api_key=self.api_key)
+            self.model = "gemini-2.0-flash-lite-001"
+            logger.info("AI service initialized with Google Gemini")
+        except Exception as e:
+            raise AIServiceError(f"Failed to initialize Gemini API: {e}") from e
+
+    def _init_zai(self, api_key: Optional[str] = None):
+        """Initialize Z.ai provider (OpenAI-compatible)."""
+        if OpenAI is None:
+            raise AIServiceError("openai library is not installed (required for Z.ai)")
+
+        self.api_key = api_key or os.environ.get(ENV_ZAI_API_KEY)
+        if not self.api_key:
+            raise AIServiceError(f"{ENV_ZAI_API_KEY} environment variable not set")
+
+        try:
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://api.z.ai/api/paas/v4"
+            )
+            if track_openai:
+                self.client = track_openai(self.client)
+            self.model = "GLM-4.5-Air"  # Z.ai model
+            logger.info("AI service initialized with Z.ai")
+        except Exception as e:
+            raise AIServiceError(f"Failed to initialize Z.ai API: {e}") from e
+
+    def _init_pollinations(self, api_key: Optional[str] = None):
+        """Initialize Pollinations.ai provider (OpenAI-compatible)."""
+        if OpenAI is None:
+            raise AIServiceError("openai library is not installed (required for Pollinations.ai)")
+
+        self.api_key = api_key or os.environ.get(ENV_POLLINATIONS_API_KEY)
+        if not self.api_key:
+            raise AIServiceError(f"{ENV_POLLINATIONS_API_KEY} environment variable not set")
+
+        try:
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://text.pollinations.ai/openai"
+            )
+            if track_openai:
+                self.client = track_openai(self.client)
+            self.model = "openai"  # Pollinations.ai model
+            logger.info("AI service initialized with Pollinations.ai")
+        except Exception as e:
+            raise AIServiceError(f"Failed to initialize Pollinations.ai API: {e}") from e
 
     @track
     def calculate_focus_score(
@@ -93,17 +170,27 @@ class AIService:
         prompt = self._generate_focus_score_prompt(activity_logs, profile)
 
         try:
-            # Call Gemini API with timeout
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
+            # Call AI API
+            if self.provider in ["zai", "pollinations"]:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
                     temperature=0.7,
-                    max_output_tokens=300,
-                ),
-            )
+                    max_tokens=300,
+                )
+                score_text = response.choices[0].message.content.strip()
+            else:  # gemini
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=300,
+                    ),
+                )
+                score_text = response.text.strip()
 
             # Parse score from response
-            score_text = response.text.strip()
             score = self._extract_score_from_response(score_text)
 
             if score is not None:
@@ -179,21 +266,107 @@ class AIService:
             logger.info("No activity logs to summarize")
             return None
 
+        # Triviality Check: precise optimization for low-data sessions
+        # Tracked in a separate span for observability
+        early_return_summary = self._check_triviality(activity_logs)
+        if early_return_summary:
+            return early_return_summary
+
+        if early_return_summary:
+            return early_return_summary
+
         # Generate prompt
         prompt = self._generate_summary_prompt(activity_logs, profile)
 
         try:
-            # Call Gemini API
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
+            # Call AI API
+            if self.provider in ["zai", "pollinations"]:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
                     temperature=0.7,
-                    max_output_tokens=1000,
-                ),
-            )
+                    max_tokens=1000,
+                )
+                summary_text = response.choices[0].message.content.strip()
+            else:  # gemini
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=1000,
+                    ),
+                )
+                summary_text = response.text.strip()
 
-            # Parse summary from response
-            summary_text = response.text.strip()
+            # For now, create a simple summary
+            # Full parsing would be more sophisticated
+            daily_summary = DailySummary(
+                summary_text=summary_text,
+                productivity_patterns=[],
+                time_distribution={},
+                goal_alignment="Based on your activities",
+                recommendations=[],
+                generated_at=datetime.now(),
+            )
+            
+            logger.info("Daily summary generated successfully")
+            return daily_summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate daily summary: {e}")
+            return None
+
+    @track(name="check_activity_significance")
+    def _check_triviality(self, activity_logs: List[ActivityLogEntry]) -> Optional[DailySummary]:
+        """Check if activity is sufficient for AI analysis.
+        
+        Returns:
+            DailySummary if trivial (bypassing LLM), None if significant (proceed to LLM).
+        """
+        total_duration = sum(log.duration_seconds for log in activity_logs)
+        
+        # Log metadata for the span
+        try:
+            opik.opik_context.update_current_trace(tags=["optimization_triviality_check"])
+        except:
+            pass # context might not be available
+            
+        if total_duration < 600:
+            logger.info(f"Total activity ({total_duration}s) is trivial. Bypassing LLM.")
+            return DailySummary(
+                summary_text="Not enough significant activity recorded yet to generate a deep analysis. Continue working to get AI-powered insights!",
+                productivity_patterns=["Insufficient data for pattern detection"],
+                time_distribution={},
+                goal_alignment="N/A",
+                recommendations=["Track at least 10 minutes of activity to unlock AI summaries."],
+                generated_at=datetime.now()
+            )
+        return None
+
+        # Generate prompt
+        prompt = self._generate_summary_prompt(activity_logs, profile)
+
+        try:
+            # Call AI API
+            if self.provider in ["zai", "pollinations"]:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=1000,
+                )
+                summary_text = response.choices[0].message.content.strip()
+            else:  # gemini
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=1000,
+                    ),
+                )
+                summary_text = response.text.strip()
 
             # For now, create a simple summary
             # Full parsing would be more sophisticated
@@ -278,51 +451,73 @@ Focus Score:"""
 
         return prompt
 
+    def _summarize_logs_locally(self, activity_logs: List[ActivityLogEntry]) -> str:
+        """Pre-process logs locally to reduce token count.
+        
+        Groups by application and calculates total duration.
+        """
+        app_stats = {}
+        for log in activity_logs:
+            app = log.application
+            if app not in app_stats:
+                app_stats[app] = {"duration": 0, "windows": set()}
+            app_stats[app]["duration"] += log.duration_seconds
+            app_stats[app]["windows"].add(log.window_title)
+            
+        # Format summary
+        summary_lines = []
+        for app, stats in sorted(app_stats.items(), key=lambda x: x[1]["duration"], reverse=True):
+            duration_mins = int(stats["duration"] / 60)
+            if duration_mins < 1:
+                continue # Skip very short interactions
+            window_count = len(stats["windows"])
+            summary_lines.append(f"- {app}: {duration_mins} mins ({window_count} unique windows)")
+            
+        if not summary_lines:
+            return "No significant activity recorded."
+            
+        return chr(10).join(summary_lines)
+
     def _generate_summary_prompt(
         self, activity_logs: List[ActivityLogEntry], profile: UserProfile
     ) -> str:
-        """Generate prompt for daily summary generation.
+        """Generate prompt with strict constraints and pre-processed data."""
+        
+        # Pre-process logs locally (Fast Python Ops)
+        activity_summary = self._summarize_logs_locally(activity_logs)
 
-        Args:
-            activity_logs: Activity logs to summarize
-            profile: User profile for context
-
-        Returns:
-            Prompt string for AI
-        """
-        # Group activities by application
-        app_summary = {}
-        for log in activity_logs:
-            app = log.application
-            if app not in app_summary:
-                app_summary[app] = []
-            app_summary[app].append(log.window_title)
-
-        # Format activities
-        activities_text = []
-        for app, windows in app_summary.items():
-            activities_text.append(f"\n{app}:")
-            for window in set(windows[:5]):  # Top 5 unique windows per app
-                activities_text.append(f"  - {window}")
-
-        prompt = f"""You are a productivity assistant. Generate a daily summary of the user's activity.
+        prompt = f"""You are a productivity assistant. Analyze the provided user activity stats and generate a summary.
 
 User Profile:
 - Name: {profile.name}
 - Role: {profile.role}
 - Main Goal: {profile.main_goal}
 
-Activity Summary:
-{f'{chr(10)}'.join(activities_text)}
-
-Total Activities: {len(activity_logs)} entries
+Activity Stats:
+{activity_summary}
 
 Instructions:
-1. Provide a concise summary of the user's day
-2. Identify productivity patterns
-3. Assess goal alignment
-4. Provide 2-3 actionable recommendations
-5. Be encouraging and constructive
+Before generating any detailed summary or interpreting productivity patterns, carefully check if the input contains specific, granular data such as:
+- Window/application titles
+- Document names or URLs
+- Timestamps or fine-grained durations
+- Distinct activity events
+
+If this granular data is missing and only aggregated totals (e.g., total time, number of windows/tabs) are available, do NOT infer or invent any details. Instead, clearly state that only high-level summary information is present, and provide:
+- A brief aggregation of the available totals (desktop/browser minutes, window/tab counts)
+- An explicit note about what specific details could not be analyzed due to input limitations
+- Proactive suggestions for what additional data should be collected to enable deeper analysis in the future
+
+If granular details are present, follow these steps:
+- Walk through each major activity category/application
+- Highlight any significant tasks, documents, or URLs, with timestamps/durations if available
+- List main applications used, notable documents edited, and web resources consulted
+
+Always:
+- Use clear headings and bullet points
+- Never fabricate, extrapolate beyond the input, or overstate insight
+- Prefer brevity and transparency over filler or speculation
+- Begin your summary with a verification statement about data completeness (e.g., “Input contains only aggregate counts...” or “Detailed event data detected...”).
 
 Daily Summary:"""
 
@@ -385,10 +580,11 @@ Daily Summary:"""
         """
         try:
             # Call Gemini API for task detection
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,  # Lower temperature for more consistent results
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash-lite-001",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
                     max_output_tokens=500,
                 ),
             )

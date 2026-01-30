@@ -32,7 +32,8 @@ def setup_logging(
     Returns:
         Configured logger instance
     """
-    logger = logging.getLogger(name)
+    # Configure root logger to capture all logs
+    logger = logging.getLogger()
     logger.setLevel(log_level)
 
     # Clear existing handlers to avoid duplicates

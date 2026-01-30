@@ -259,60 +259,71 @@ class DashboardFrame(ctk.CTkFrame):
             self.start_button.configure(state="normal")
             self.stop_button.configure(state="disabled")
             self.summarize_button.configure(state="disabled")
-            self.status_label.configure(text="Status: Generating Summary...", text_color="blue")
+            self.status_label.configure(text="Status: Generating Summary (this may take a moment)...", text_color="blue")
 
-            logger.info("Generating daily summary")
+            logger.info("Generating daily summary in background thread")
 
-            # Show loading indicator
-            self.status_label.configure(text="Status: Generating Summary...", text_color="blue")
+            # Validate before starting thread
+            if not self.ai_service:
+                InfoDialog(self, "AI Service Unavailable", "The AI service is not configured. Please check your API key.")
+                self._reset_ui_after_summary()
+                return
 
-            # Generate summary
-            self._generate_and_show_summary()
+            all_logs = self.log_handler.get_all_entries()
+            if not all_logs:
+                InfoDialog(self, "No Activity", "No activity has been tracked yet. Start tracking and come back later!")
+                self._reset_ui_after_summary()
+                return
 
-            # Update status
-            self.status_label.configure(text="Status: Not Tracking", text_color="gray")
+            # Start background thread
+            import threading
+            threading.Thread(target=self._generate_and_show_summary_async, args=(all_logs,), daemon=True).start()
 
         except Exception as e:
             logger.error(f"Failed to generate summary: {e}")
             self.status_label.configure(text="Status: Error", text_color="red")
             ErrorDialog(self, "Summary Generation Failed", f"Failed to generate summary: {e}")
+            self._reset_ui_after_summary()
 
-    def _generate_and_show_summary(self):
-        """Generate daily summary and display in dialog.
+    def _reset_ui_after_summary(self):
+        """Reset UI state after summary generation (or error)."""
+        self.status_label.configure(text="Status: Not Tracking", text_color="gray")
+        self.summarize_button.configure(state="normal") # Re-enable if needed
 
-        Handles empty logs, AI errors, and displays summary dialog.
-        """
-        if not self.ai_service:
-            InfoDialog(self, "AI Service Unavailable", "The AI service is not configured. Please check your API key.")
-            return
-
-        # Get all activity logs
-        all_logs = self.log_handler.get_all_entries()
-
-        if not all_logs:
-            InfoDialog(self, "No Activity", "No activity has been tracked yet. Start tracking and come back later!")
-            return
-
+    def _generate_and_show_summary_async(self, all_logs):
+        """Generate summary in background and schedule UI update."""
         try:
             # Convert log dicts to ActivityLogEntry objects
             from models.activity_log import ActivityLogEntry
             activity_logs = [ActivityLogEntry.from_dict(log) for log in all_logs]
 
-            # Generate summary
+            # Generate summary (BLOCKING CALL - OK in background thread)
             summary = self.ai_service.generate_daily_summary(activity_logs, self.profile)
 
-            if summary is None:
-                ErrorDialog(self, "Summary Generation Failed", "Could not generate summary. The AI service may be unavailable.")
-                return
-
-            # Display summary dialog
-            SummaryDialog(self, summary)
-
-            logger.info("Daily summary displayed successfully")
+            # Schedule UI update on main thread
+            self.after(0, lambda: self._handle_summary_result(summary))
 
         except Exception as e:
-            logger.error(f"Error generating summary: {e}", exc_info=True)
-            ErrorDialog(self, "Summary Generation Failed", f"An error occurred: {e}")
+            logger.error(f"Error generating summary async: {e}", exc_info=True)
+            self.after(0, lambda: self._handle_summary_error(e))
+
+    def _handle_summary_result(self, summary):
+        """Handle successful summary generation on main thread."""
+        self._reset_ui_after_summary()
+        
+        if summary is None:
+            ErrorDialog(self, "Summary Generation Failed", "Could not generate summary. The AI service may be unavailable.")
+            return
+
+        # Display summary dialog
+        SummaryDialog(self, summary)
+        logger.info("Daily summary displayed successfully")
+
+    def _handle_summary_error(self, error):
+        """Handle summary generation error on main thread."""
+        self._reset_ui_after_summary()
+        self.status_label.configure(text="Status: Error", text_color="red")
+        ErrorDialog(self, "Summary Generation Failed", f"An error occurred: {error}")
 
     def _update_live_feed(self):
         """Update live feed with recent activity.
